@@ -173,9 +173,11 @@ class JDBCCatalog(override val conf: CatalystConf = new SimpleCatalystConf(true)
       prepped.execute()
     }
     else {
-     val prepped = connection.prepareStatement(s"""|UPDATE $db.$table SET $SchemaField=?, $DatasourceField=?,$PartitionColumnField=?,$OptionsField=?,$CrossdataVersionField=?
+     val prepped = connection.prepareStatement(
+      s"""|UPDATE $db.$table SET $SchemaField=?, $DatasourceField=?,$PartitionColumnField=?,$OptionsField=?,$CrossdataVersionField=?
           |WHERE $DatabaseField='${crossdataTable.dbName.getOrElse("")}' AND $TableNameField='${crossdataTable.tableName}';
-       """.stripMargin)
+       """.stripMargin.replaceAll("\n", " "))
+
       prepped.setString(1, tableSchema)
       prepped.setString(2, crossdataTable.datasource)
       prepped.setString(3, partitionColumn)
@@ -200,58 +202,5 @@ class JDBCCatalog(override val conf: CatalystConf = new SimpleCatalystConf(true)
     connection.createStatement.executeUpdate(s"TRUNCATE $db.$table")
   }
 
-
-  private def getUserSpecifiedSchema(schemaJSON: String): Option[StructType] = {
-    implicit val formats = DefaultFormats
-
-    val jsonMap = JSON.parseFull(schemaJSON).get.asInstanceOf[Map[String, Any]]
-    val fields = jsonMap.getOrElse("fields", throw new Error("Fields not found")).asInstanceOf[List[Map[String, Any]]]
-    val structFields = fields.map { x => {
-
-
-      val typeStr: String = x.getOrElse("type", throw new Error("Type not found")) match {
-        case structType: Map[String, Any] => convertToGrammar(structType)
-        case simpleType: String => simpleType
-        case _ => throw new Error("Invalid type")
-      }
-      StructField(
-        x.getOrElse("name", throw new Error("Name not found")).asInstanceOf[String],
-        DataTypeParser.parse(typeStr),
-        x.getOrElse("nullable", throw new Error("Nullable definition not found")).asInstanceOf[Boolean],
-        Metadata.fromJson(write(x.getOrElse("metadata", throw new Error("Metadata not found")).asInstanceOf[Map[String, Any]]))
-      )
-    }
-    }
-    Some(StructType(structFields))
-  }
-
-  private def convertToGrammar (m: Map[String, Any]) : String = {
-    if(m.contains("fields")) {
-      val fields = m.get("fields").get.asInstanceOf[List[Map[String, Any]]].map(x=>{x.getOrElse("name", throw new Error("Name not found"))+":"+convertToGrammar(x)}) mkString ","
-      "struct<"+fields+">"
-    }
-    else m.getOrElse("type", throw new Error("Type not found")).asInstanceOf[String]
-  }
-
-  private def getPartitionColumn(partitionColumn: String): Array[String] =
-    JSON.parseFull(partitionColumn).toList.flatMap(_.asInstanceOf[List[String]]).toArray
-
-  private def getOptions(optsJSON: String): Map[String, String] =
-    JSON.parseFull(optsJSON).get.asInstanceOf[Map[String, String]]
-
-  private def serializeSchema(schema: StructType): String = {
-    implicit val formats = DefaultFormats
-    write(schema.jsonValue.values)
-  }
-
-  private def serializeOptions(options: Map[String, Any]): String = {
-    implicit val formats = DefaultFormats
-    write(options)
-  }
-
-  private def serializePartitionColumn(partitionColumn: Array[String]): String = {
-    implicit val formats = DefaultFormats
-    write(partitionColumn)
-  }
 
 }

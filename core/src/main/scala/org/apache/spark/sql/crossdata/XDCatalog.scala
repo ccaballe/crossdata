@@ -16,6 +16,10 @@
 package org.apache.spark.sql.crossdata
 
 import com.stratio.gosec.access.client.CrossdataClient
+import com.stratio.gosec.access.client.resources.Datastore
+import com.stratio.gosec.access.client.resources.TableResource
+import com.stratio.gosec.access.client.resources.Datastore.Datastore
+import com.stratio.gosec.access.client.permissions.{PermissionType, Permission}
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.analysis.Catalog
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Subquery}
@@ -41,6 +45,7 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
 
   // Gosec login
   val client = new CrossdataClient
+  // TODO user and password in config
   client.login("ccaballero", "1234")
 
   override def tableExists(tableIdentifier: Seq[String]): Boolean = {
@@ -82,8 +87,9 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
 
   override def lookupRelation(tableIdentifier: Seq[String], alias: Option[String]): LogicalPlan = {
     val tableIdent = processTableIdentifier(tableIdentifier)
-    lookupRelationCache(tableIdent, alias).getOrElse {
-      val (table, database) = tableIdToTuple(tableIdent)
+    val (table, database) = tableIdToTuple(tableIdent)
+
+    val tableLP  = lookupRelationCache(tableIdent, alias).getOrElse {
       logInfo(s"XDCatalog: Looking up table ${tableIdent.mkString(".")}")
       lookupTable(table, database) match {
         case Some(crossdataTable) =>
@@ -93,6 +99,22 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
 
         case None =>
           sys.error(s"Table Not Found: ${tableIdent.mkString(".")}")
+        // TODO table not found maybe is not an error because we must check if we have access
+      }
+    }
+
+    tableLP match {
+      case Subquery(_, LogicalRelation(baseRelation)) =>
+      {
+        val permission = client.askPermission(
+          new Permission(
+            TableResource(XDCatalog.getDatastore(baseRelation.getClass.getPackage.getName), database.getOrElse(""), table),
+            PermissionType.Read)
+        )
+        if (permission){
+          tableLP
+        }
+        else sys.error(s"User does not have access to ${database.getOrElse("")+"."}$table")
       }
     }
   }
@@ -221,6 +243,13 @@ object XDCatalog{
   def serializePartitionColumn(partitionColumn: Array[String]): String = {
     implicit val formats = DefaultFormats
     write(partitionColumn)
+  }
+
+  def getDatastore(datasource: String) : Datastore = datasource match {
+    case "org.apache.spark.sql.cassandra" => Datastore.Cassandra
+    case "org.apache.spark.sql.elasticsearch" => Datastore.ElasticSearch
+    case "org.apache.spark.sql.mongo" => Datastore.Mongo
+    case _ => throw new Error (s"Datasource not supported: $datasource")
   }
 
   private def convertToGrammar (m: Map[String, Any]) : String = {

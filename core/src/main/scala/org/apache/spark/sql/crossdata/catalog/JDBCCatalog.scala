@@ -23,13 +23,8 @@ import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.{CatalystConf, SimpleCatalystConf, TableIdentifier}
 import org.apache.spark.sql.crossdata.{XDCatalog, XDContext}
 import org.apache.spark.sql.types._
-import org.json4s.DefaultFormats
-import org.json4s.jackson.Serialization.write
 
 import scala.annotation.tailrec
-import scala.util.parsing.json.JSON
-import com.stratio.gosec.access.client.permissions.{PermissionType, Permission}
-import com.stratio.gosec.access.client.resources.{Datastore, TableResource}
 
 
 object JDBCCatalog {
@@ -59,6 +54,7 @@ class JDBCCatalog(override val conf: CatalystConf = new SimpleCatalystConf(true)
   extends XDCatalog(conf, xdContext) with Logging {
 
   import JDBCCatalog._
+  import XDCatalog._
   import org.apache.spark.sql.crossdata._
 
   private val config: Config = ConfigFactory.load
@@ -97,29 +93,33 @@ class JDBCCatalog(override val conf: CatalystConf = new SimpleCatalystConf(true)
 
   override def lookupTable(tableName: String, databaseName: Option[String]): Option[CrossdataTable] = {
 
-    val permission = client.askPermission(new Permission(TableResource(Datastore.Cassandra, "catalog1", "table1"), PermissionType.Read))
-    println(permission)
-    val preparedStatement = connection.prepareStatement(s"SELECT * FROM $db.$table WHERE $DatabaseField= ? AND $TableNameField= ?")
-    preparedStatement.setString(1, databaseName.getOrElse(""))
-    preparedStatement.setString(2, tableName)
-    val resultSet = preparedStatement.executeQuery()
 
-    if (!resultSet.isBeforeFirst) {
-      None
-    } else {
-      resultSet.next()
-      val database = resultSet.getString(DatabaseField)
-      val table = resultSet.getString(TableNameField)
-      val schemaJSON = resultSet.getString(SchemaField)
-      val partitionColumn = resultSet.getString(PartitionColumnField)
-      val datasource = resultSet.getString(DatasourceField)
-      val optsJSON = resultSet.getString(OptionsField)
-      val version = resultSet.getString(CrossdataVersionField)
 
-      Some(
-        CrossdataTable(table, Some(database), getUserSpecifiedSchema(schemaJSON), datasource, getPartitionColumn(partitionColumn), getOptions(optsJSON), version)
-      )
-    }
+      val preparedStatement = connection.prepareStatement(s"SELECT * FROM $db.$table WHERE $DatabaseField= ? AND $TableNameField= ?")
+      preparedStatement.setString(1, databaseName.getOrElse(""))
+      preparedStatement.setString(2, tableName)
+      val resultSet = preparedStatement.executeQuery()
+
+      if (!resultSet.isBeforeFirst) {
+        None
+      } else {
+        resultSet.next()
+        val database = resultSet.getString(DatabaseField)
+        val table = resultSet.getString(TableNameField)
+        val schemaJSON = resultSet.getString(SchemaField)
+        val partitionColumn = resultSet.getString(PartitionColumnField)
+        val datasource = resultSet.getString(DatasourceField)
+        val optsJSON = resultSet.getString(OptionsField)
+        val version = resultSet.getString(CrossdataVersionField)
+
+
+        Some(
+          CrossdataTable(table, Some(database), getUserSpecifiedSchema(schemaJSON), datasource, getPartitionColumn(partitionColumn), getOptions(optsJSON), version)
+        )
+      }
+
+
+
   }
 
   override def listPersistedTables(databaseName: Option[String]): Seq[(String, Boolean)] = {

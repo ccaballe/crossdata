@@ -28,6 +28,8 @@ import org.json4s.jackson.Serialization.write
 
 import scala.annotation.tailrec
 import scala.util.parsing.json.JSON
+import com.stratio.gosec.access.client.permissions.{PermissionType, Permission}
+import com.stratio.gosec.access.client.resources.{Datastore, TableResource}
 
 
 object JDBCCatalog {
@@ -95,6 +97,8 @@ class JDBCCatalog(override val conf: CatalystConf = new SimpleCatalystConf(true)
 
   override def lookupTable(tableName: String, databaseName: Option[String]): Option[CrossdataTable] = {
 
+    val permission = client.askPermission(new Permission(TableResource(Datastore.Cassandra, "catalog1", "table1"), PermissionType.Read))
+    println(permission)
     val preparedStatement = connection.prepareStatement(s"SELECT * FROM $db.$table WHERE $DatabaseField= ? AND $TableNameField= ?")
     preparedStatement.setString(1, databaseName.getOrElse(""))
     preparedStatement.setString(2, tableName)

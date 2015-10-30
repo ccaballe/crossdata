@@ -15,6 +15,7 @@
  */
 package org.apache.spark.sql.crossdata
 
+import com.stratio.gosec.access.client.CrossdataClient
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.analysis.Catalog
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Subquery}
@@ -33,6 +34,10 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
   // TODO We should use a limited cache
 
   val tables = new mutable.HashMap[String, LogicalPlan]()
+
+  // Gosec login
+  val client = new CrossdataClient
+  client.login("ccaballero", "1234")
 
   override def tableExists(tableIdentifier: Seq[String]): Boolean = {
     val tableIdent = processTableIdentifier(tableIdentifier)

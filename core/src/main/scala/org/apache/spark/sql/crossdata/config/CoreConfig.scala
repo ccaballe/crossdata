@@ -78,5 +78,7 @@ trait CoreConfig  {
 
   val catalogConfig = config.getConfig("catalog")
 
+  val securityConfig = config.getConfig("security")
+
 }
 

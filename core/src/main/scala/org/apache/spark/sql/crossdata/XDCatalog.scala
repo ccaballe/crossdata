@@ -15,10 +15,14 @@
  */
 package org.apache.spark.sql.crossdata
 
+import java.lang.reflect.Constructor
+
+import com.typesafe.config.Config
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.analysis.Catalog
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Subquery}
 import org.apache.spark.sql.catalyst.{CatalystConf, SimpleCatalystConf, TableIdentifier}
+import org.apache.spark.sql.crossdata.security.{Read, PermissionType, ICrossdataAuthorizer}
 import org.apache.spark.sql.execution.datasources.{LogicalRelation, ResolvedDataSource}
 import org.apache.spark.sql.types._
 import org.json4s.DefaultFormats
@@ -75,8 +79,39 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
     (cachedTables.toMap ++ listPersistedTables(databaseName).toMap).toSeq
   }
 
+  def checkAcl (tableIdentifier: Seq[String], action: String = "Read", user: String = "user", password: String = "password" ) : Boolean = {
+    // TODO action must not be an string, user and password?
+    import XDCatalog.{AuthorizerClass, DefaultAuthorizerClass}
+    val xdSecurityConfig: Config = xdContext.securityConfig
+
+    val xdAuthorizerClass = if(xdSecurityConfig.hasPath(AuthorizerClass))
+      xdSecurityConfig.getString(AuthorizerClass)
+    else
+      DefaultAuthorizerClass
+
+    val constr: Constructor[_] = Class.forName(xdAuthorizerClass).getConstructor()
+
+    val xdAuthorizer = constr.newInstance().asInstanceOf[ICrossdataAuthorizer]
+
+    xdAuthorizer.login(user, password)
+    // TODO datasource must be obtained in the logical plan?
+    val datasource = ""
+    val (table, database) = tableIdToTuple(tableIdentifier)
+
+    xdAuthorizer.checkAcl(datasource, database, Some(table), Read)
+
+    true
+
+  }
+
   override def lookupRelation(tableIdentifier: Seq[String], alias: Option[String]): LogicalPlan = {
+
+
     val tableIdent = processTableIdentifier(tableIdentifier)
+
+    if(!checkAcl(tableIdent)){
+      throw new Error("User does not have permission to Read from this table")
+    }
     lookupRelationCache(tableIdent, alias).getOrElse {
       val (table, database) = tableIdToTuple(tableIdent)
       logInfo(s"XDCatalog: Looking up table ${tableIdent.mkString(".")}")
@@ -183,6 +218,9 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
 }
 
 object XDCatalog{
+
+  val AuthorizerClass = "authorizerClass"
+  val DefaultAuthorizerClass = "org.apache.spark.sql.crossdata.security.DefaultCrossdataAuthorizer"
 
   implicit def asXDCatalog(catalog: Catalog): XDCatalog = catalog.asInstanceOf[XDCatalog]
 

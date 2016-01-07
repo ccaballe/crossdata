@@ -169,6 +169,7 @@ object XDContext {
   val CaseSensitive = "caseSensitive"
   val DerbyClass = "org.apache.spark.sql.crossdata.catalog.DerbyCatalog"
 
+
   private val INSTANTIATION_LOCK = new Object()
 
   /**
